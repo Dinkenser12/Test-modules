@@ -1,7 +1,7 @@
 import express from 'express'
 import fs from 'fs'
 import path from 'path'
-import { fileURLToPath, pathToFileURL } from 'url'
+import { fileURLToPath } from 'url'
 import { Boom } from '@hapi/boom'
 import pino from 'pino'
 import {
@@ -18,14 +18,15 @@ const app = express()
 const PORT = process.env.PORT || 3000
 const sessions = {}
 
-app.get('/', (req, res) => {
-  res.send(`<h2>🌸 Nezuko Bot by Zenox 🌸</h2><p>Use /pair/:sessionid to get a pairing code.</p>`)
+app.use(express.static(path.join(__dirname, 'public')))
+
+app.get('/get-code', (req, res) => {
+  const session = sessions['default']
+  const code = session?.pairingCode || null
+  res.json({ code })
 })
 
-app.get('/pair/:sessionId', async (req, res) => {
-  const { sessionId } = req.params
-  if (!sessionId) return res.status(400).send('Missing session ID')
-
+async function startBot(sessionId = 'default') {
   try {
     const authPath = path.join(__dirname, 'sessions', sessionId)
     if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true })
@@ -53,18 +54,17 @@ app.get('/pair/:sessionId', async (req, res) => {
       if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut
-        console.log(`❌ Session ${sessionId} disconnected`)
+        console.log(`âŒ Session ${sessionId} disconnected`)
         if (shouldReconnect) startBot(sessionId)
       } else if (connection === 'open') {
-        console.log(`✅ Session ${sessionId} connected`)
-
+        console.log(`âœ… Session ${sessionId} connected`)
         await sock.sendMessage(sock.user.id, {
-          text: `🌸 *Welcome to Nezuko Bot!* 🌸\n\nHello! I'm your personal WhatsApp assistant, built by *Zenox*.\nChoose a command below to begin:`,
+          text: `ðŸŒ¸ *Welcome to Nezuko Bot!* ðŸŒ¸\n\nHello! I'm your personal WhatsApp assistant, built by *Zenox*.\nChoose a command below to begin:`,
           footer: 'Powered by Nezuko',
           buttons: [
-            { buttonId: '.menu', buttonText: { displayText: '📋 Menu' }, type: 1 },
-            { buttonId: '.help', buttonText: { displayText: '❓ Help' }, type: 1 },
-            { buttonId: '.alive', buttonText: { displayText: '💓 Alive' }, type: 1 }
+            { buttonId: '.menu', buttonText: { displayText: 'ðŸ“‹ Menu' }, type: 1 },
+            { buttonId: '.help', buttonText: { displayText: 'â“ Help' }, type: 1 },
+            { buttonId: '.alive', buttonText: { displayText: 'ðŸ’“ Alive' }, type: 1 }
           ],
           headerType: 1
         })
@@ -72,19 +72,12 @@ app.get('/pair/:sessionId', async (req, res) => {
     })
 
     loadPlugins(sock)
-
-    res.send(`<h3>✅ Pairing code for session "${sessionId}" is ready!</h3><p>Check your terminal to scan or use this code: <b>${sessions[sessionId].pairingCode || 'Loading...'}</b></p>`)
   } catch (e) {
-    console.error(e)
-    res.status(500).send('Error initializing session.')
+    console.error('Failed to start bot:', e)
   }
-})
-
-app.listen(PORT, () => console.log(`✅ Nezuko Bot web server running on port ${PORT}`))
-
-export async function startBot(sessionId = 'default') {
-  const res = await fetch(`http://localhost:${PORT}/pair/${sessionId}`)
-  console.log(await res.text())
 }
 
-if (process.env.RENDER) startBot('default')
+app.listen(PORT, () => {
+  console.log(`âœ… Nezuko Bot web server running on port ${PORT}`)
+  startBot('default')
+})

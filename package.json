@@ -6,9 +6,9 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^latest",
-    "pino": "^latest",
-    "@hapi/boom": "^latest",
-    "express": "^latest"
+    "@whiskeysockets/baileys": "latest",
+    "pino": "latest",
+    "@hapi/boom": "latest",
+    "express": "latest"
   }
 }

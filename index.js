@@ -1,85 +1,90 @@
-import makeWASocket, {
+import express from 'express'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath, pathToFileURL } from 'url'
+import { Boom } from '@hapi/boom'
+import pino from 'pino'
+import {
+  makeWASocket,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore,
-  DisconnectReason
-} from '@whiskeysockets/baileys';
-import pino from 'pino';
-import { Boom } from '@hapi/boom';
-import { loadPlugins } from './lib/pluginLoader.js';
-import './web.js';
-import fs from 'fs';
-import path from 'path';
+  DisconnectReason,
+  fetchLatestBaileysVersion
+} from '@whiskeysockets/baileys'
+import { loadPlugins } from './lib/pluginLoader.js'
 
-const sessions = {}; // Store all active sessions
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const startBot = async (sessionId) => {
-  const sessionPath = `./sessions/${sessionId}`;
-  if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
+const app = express()
+const PORT = process.env.PORT || 3000
+const sessions = {}
 
-  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-  const { version } = await fetchLatestBaileysVersion();
+app.get('/', (req, res) => {
+  res.send(`<h2>🌸 Nezuko Bot by Zenox 🌸</h2><p>Use /pair/:sessionid to get a pairing code.</p>`)
+})
 
-  const sock = makeWASocket({
-    version,
-    printQRInTerminal: false,
-    auth: {
-      creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
-    },
-    logger: pino({ level: 'silent' }),
-    browser: ['Nezuko Bot', 'Chrome', '1.0.0']
-  });
+app.get('/pair/:sessionId', async (req, res) => {
+  const { sessionId } = req.params
+  if (!sessionId) return res.status(400).send('Missing session ID')
 
-  sock.ev.on('creds.update', saveCreds);
+  try {
+    const authPath = path.join(__dirname, 'sessions', sessionId)
+    if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true })
 
-  sock.ev.on('connection.update', async (update) => {
-  const { connection, lastDisconnect, pairingCode } = update;
+    const { state, saveCreds } = await useMultiFileAuthState(authPath)
+    const { version } = await fetchLatestBaileysVersion()
 
-  if (pairingCode) {
-    sessions[sessionId].pairingCode = pairingCode;
-  }
+    const sock = makeWASocket({
+      version,
+      auth: state,
+      printQRInTerminal: true,
+      logger: pino({ level: 'silent' }),
+      browser: ['Nezuko', 'Chrome', '1.0.0']
+    })
 
-  if (connection === 'close') {
-    const statusCode = lastDisconnect?.error?.output?.statusCode;
-    const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-    console.log(`❌ Session ${sessionId} disconnected from server`);
-    if (shouldReconnect) startBot(sessionId);
-  } else if (connection === 'open') {
-    console.log(`✅ Session ${sessionId} connected in Nezuko`);
+    sessions[sessionId] = { sock, saveCreds }
 
-    await sock.sendMessage(sock.user.id, {
-      text: `🌸 *Welcome to Nezuko Bot!* 🌸\n\nHello! I'm your personal WhatsApp assistant, built by *Zenox*.\nChoose a command below to begin:`,
-      footer: 'Powered by Nezuko',
-      buttons: [
-        { buttonId: '.menu', buttonText: { displayText: 'Menu' }, type: 1 },
-        { buttonId: '.help', buttonText: { displayText: 'Help' }, type: 1 },
-        { buttonId: '.alive', buttonText: { displayText: 'Alive' }, type: 1 },
-      ],
-      headerType: 1
-    });
-  }
-});
+    sock.ev.on('creds.update', saveCreds)
 
-  // Handle incoming messages
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-    const msg = messages[0];
-    if (!msg.message || msg.key.fromMe) return;
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, pairingCode } = update
 
-    for (const plugin of global.plugins) {
-      try {
-        await plugin(sock, msg);
-      } catch (err) {
-        console.error('❗ Plugin error:', err);
+      if (pairingCode) sessions[sessionId].pairingCode = pairingCode
+
+      if (connection === 'close') {
+        const statusCode = lastDisconnect?.error?.output?.statusCode
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut
+        console.log(`❌ Session ${sessionId} disconnected`)
+        if (shouldReconnect) startBot(sessionId)
+      } else if (connection === 'open') {
+        console.log(`✅ Session ${sessionId} connected`)
+
+        await sock.sendMessage(sock.user.id, {
+          text: `🌸 *Welcome to Nezuko Bot!* 🌸\n\nHello! I'm your personal WhatsApp assistant, built by *Zenox*.\nChoose a command below to begin:`,
+          footer: 'Powered by Nezuko',
+          buttons: [
+            { buttonId: '.menu', buttonText: { displayText: '📋 Menu' }, type: 1 },
+            { buttonId: '.help', buttonText: { displayText: '❓ Help' }, type: 1 },
+            { buttonId: '.alive', buttonText: { displayText: '💓 Alive' }, type: 1 }
+          ],
+          headerType: 1
+        })
       }
-    }
-  });
+    })
 
-  sessions[sessionId].sock = sock;
-};
+    loadPlugins(sock)
 
-global.plugins = loadPlugins(path.resolve('./plugins'));
-global.sessions = sessions;
+    res.send(`<h3>✅ Pairing code for session "${sessionId}" is ready!</h3><p>Check your terminal to scan or use this code: <b>${sessions[sessionId].pairingCode || 'Loading...'}</b></p>`)
+  } catch (e) {
+    console.error(e)
+    res.status(500).send('Error initializing session.')
+  }
+})
 
-export { startBot };
+app.listen(PORT, () => console.log(`✅ Nezuko Bot web server running on port ${PORT}`))
+
+export async function startBot(sessionId = 'default') {
+  const res = await fetch(`http://localhost:${PORT}/pair/${sessionId}`)
+  console.log(await res.text())
+}
+
+if (process.env.RENDER) startBot('default')

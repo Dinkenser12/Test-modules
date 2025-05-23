@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nezuko Bot - Pairing</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <h1>Welcome to Nezuko Bot</h1>
+  <p>Presented by <strong>Zenox</strong></p>
+  <% if (pairingCode) { %>
+    <p>Enter this code in WhatsApp to pair:</p>
+    <code><%= pairingCode %></code>
+  <% } else { %>
+    <form action="/pair" method="POST">
+      <button type="submit">Generate Pairing Code</button>
+    </form>
+  <% } %>
+</body>
+</html>

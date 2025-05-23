@@ -34,33 +34,32 @@ const startBot = async (sessionId) => {
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, pairingCode } = update;
+  const { connection, lastDisconnect, pairingCode } = update;
 
-    // Store the pairing code in session data for the web interface
-    if (pairingCode) {
-      sessions[sessionId].pairingCode = pairingCode;
-    }
+  if (pairingCode) {
+    sessions[sessionId].pairingCode = pairingCode;
+  }
 
-    if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log(`❌ Session ${sessionId} disconnected`);
-      if (shouldReconnect) startBot(sessionId);
-    } else if (connection === 'open') {
-      console.log(`✅ Session ${sessionId} connected`);
+  if (connection === 'close') {
+    const statusCode = lastDisconnect?.error?.output?.statusCode;
+    const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+    console.log(`❌ Session ${sessionId} disconnected from server`);
+    if (shouldReconnect) startBot(sessionId);
+  } else if (connection === 'open') {
+    console.log(`✅ Session ${sessionId} connected in Nezuko`);
 
-      // Send start message with buttons
-      await sock.sendMessage(sock.user.id, {
-        text: `🌸 *Welcome to Nezuko Bot!* 🌸\n\nHello! I'm your personal WhatsApp assistant, built by *Zenox*.\nChoose a command below to begin:`,
-        footer: 'Powered by Nezuko',
-        buttons: [
-          { buttonId: '.menu', buttonText: { displayText: '📋 Menu' }, type: 1 },
-          { buttonId: '.help', buttonText: { displayText: '❓ Help' }, type: 1 },
-          { buttonId: '.alive', buttonText: { displayText: '💓 Alive' }, type: 1 },
-        ],
-        headerType: 1
-      });
-    }
-  });
+    await sock.sendMessage(sock.user.id, {
+      text: `🌸 *Welcome to Nezuko Bot!* 🌸\n\nHello! I'm your personal WhatsApp assistant, built by *Zenox*.\nChoose a command below to begin:`,
+      footer: 'Powered by Nezuko',
+      buttons: [
+        { buttonId: '.menu', buttonText: { displayText: 'Menu' }, type: 1 },
+        { buttonId: '.help', buttonText: { displayText: 'Help' }, type: 1 },
+        { buttonId: '.alive', buttonText: { displayText: 'Alive' }, type: 1 },
+      ],
+      headerType: 1
+    });
+  }
+});
 
   // Handle incoming messages
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
